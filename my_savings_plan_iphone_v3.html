@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<title>My Savings Plan</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#f5f6f8;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;color:#171717}
+.wrap{max-width:650px;margin:auto;padding:22px 16px 40px}
+.card{background:#fff;border-radius:18px;padding:18px;margin:12px 0;box-shadow:0 2px 12px #0000000d}
+h1{font-size:28px;margin:4px 0 5px}.sub{color:#6b7280;font-size:14px}
+h2{margin-top:0}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+label{display:block;font-size:12px;color:#6b7280;margin-bottom:5px}
+input,textarea{width:100%;padding:11px;border:1px solid #d7d9dd;border-radius:10px;font-size:16px;background:#fff}
+textarea{min-height:80px;resize:vertical}
+button{border:0;border-radius:10px;padding:10px 13px;font-size:14px;font-weight:600;cursor:pointer}
+.primary{background:#171717;color:#fff}.secondary{background:#eee;color:#222}
+.edit{background:#eee;color:#222}.delete{background:#f3e8e8;color:#8b1e1e}
+.stat{background:#f5f6f8;border-radius:13px;padding:15px}
+.label{font-size:12px;color:#6b7280}.num{font-size:25px;font-weight:700;margin-top:4px}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{padding:10px 4px;border-bottom:1px solid #eee;text-align:right;vertical-align:top}
+th:first-child,td:first-child{text-align:left}
+.desc{max-width:180px;text-align:left!important;word-break:break-word}
+.actions{display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap}
+.negative{font-weight:700}
+.note{font-size:12px;color:#6b7280;line-height:1.5}
+.cancel{display:none;margin-left:6px}
+@media(max-width:430px){
+ .grid{grid-template-columns:1fr}
+ h1{font-size:25px}
+ table{font-size:12px}
+ .desc{max-width:120px}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<div class="card">
+<h1>💰 My Savings Plan</h1>
+<div class="sub">Monthly savings tracker</div>
+</div>
+
+<div class="card">
+<h2>Total Savings</h2>
+<div class="stat">
+<div class="label">Current balance</div>
+<div class="num" id="total">AED 0</div>
+</div>
+<p class="note">Savings are increased by the amount saved and reduced by money you lend out.</p>
+</div>
+
+<div class="card">
+<h2 id="formTitle">Add this month</h2>
+<div class="grid">
+<div>
+<label>Month</label>
+<input id="month" type="month">
+</div>
+<div>
+<label>Amount saved (AED)</label>
+<input id="saved" type="number" inputmode="decimal" min="0" placeholder="e.g. 1400">
+</div>
+</div>
+
+<div style="margin-top:10px">
+<label>Money lent to someone (AED) — optional</label>
+<input id="lent" type="number" inputmode="decimal" min="0" value="0" placeholder="e.g. 300">
+</div>
+
+<div style="margin-top:10px">
+<label>Description</label>
+<textarea id="description" placeholder="e.g. Monthly savings / Lent to brother / Emergency expense"></textarea>
+</div>
+
+<button class="primary" id="saveBtn" onclick="saveRecord()">Save Month</button>
+<button class="secondary cancel" id="cancelBtn" onclick="cancelEdit()">Cancel</button>
+</div>
+
+<div class="card">
+<h2>Monthly collection</h2>
+<table>
+<thead>
+<tr>
+<th>Month</th>
+<th>Saved</th>
+<th>Lent</th>
+<th>Description</th>
+<th>Balance</th>
+<th></th>
+</tr>
+</thead>
+<tbody id="rows"></tbody>
+</table>
+</div>
+
+<div class="card">
+<h2>How it works</h2>
+<p class="note">
+<strong>Saved:</strong> money added to your savings.<br>
+<strong>Lent:</strong> money temporarily given to someone, which is deducted from your savings balance.<br>
+<strong>Description:</strong> write what the money was for.<br>
+<strong>Edit:</strong> change any previous entry.<br>
+<strong>Delete:</strong> remove an entry completely.
+</p>
+</div>
+
+</div>
+
+<script>
+let records = JSON.parse(localStorage.getItem("mysavings_records_v3") || "[]");
+let editingIndex = -1;
+
+const $ = id => document.getElementById(id);
+const money = n => "AED " + Math.round(n).toLocaleString();
+
+function render(){
+    let balance = 0;
+    let rows = "";
+
+    records.sort((a,b) => a.month.localeCompare(b.month));
+
+    records.forEach((x,i) => {
+        balance += (Number(x.saved)||0) - (Number(x.lent)||0);
+
+        rows += `
+        <tr>
+          <td>${x.month}</td>
+          <td>${money(x.saved)}</td>
+          <td>${x.lent > 0 ? money(x.lent) : "—"}</td>
+          <td class="desc">${escapeHtml(x.description || "")}</td>
+          <td>${money(balance)}</td>
+          <td>
+            <div class="actions">
+              <button class="edit" onclick="editRecord(${i})">Edit</button>
+              <button class="delete" onclick="deleteRecord(${i})">Delete</button>
+            </div>
+          </td>
+        </tr>`;
+    });
+
+    $("rows").innerHTML = rows || '<tr><td colspan="6" class="note">No monthly records yet.</td></tr>';
+    $("total").textContent = money(balance);
+}
+
+function saveRecord(){
+    const month = $("month").value;
+    const saved = Number($("saved").value) || 0;
+    const lent = Number($("lent").value) || 0;
+    const description = $("description").value.trim();
+
+    if(!month){
+        alert("Please select a month.");
+        return;
+    }
+
+    if(saved === 0 && lent === 0){
+        alert("Enter an amount saved or an amount lent.");
+        return;
+    }
+
+    const record = {month, saved, lent, description};
+
+    if(editingIndex >= 0){
+        records[editingIndex] = record;
+    } else {
+        records.push(record);
+    }
+
+    localStorage.setItem("mysavings_records_v3", JSON.stringify(records));
+    cancelEdit();
+    render();
+}
+
+function editRecord(index){
+    const x = records[index];
+    editingIndex = index;
+
+    $("month").value = x.month;
+    $("saved").value = x.saved || 0;
+    $("lent").value = x.lent || 0;
+    $("description").value = x.description || "";
+
+    $("formTitle").textContent = "Edit month";
+    $("saveBtn").textContent = "Update Month";
+    $("cancelBtn").style.display = "inline-block";
+
+    window.scrollTo({top:0, behavior:"smooth"});
+}
+
+function cancelEdit(){
+    editingIndex = -1;
+    $("formTitle").textContent = "Add this month";
+    $("saveBtn").textContent = "Save Month";
+    $("cancelBtn").style.display = "none";
+
+    $("month").value = new Date().toISOString().slice(0,7);
+    $("saved").value = "";
+    $("lent").value = "0";
+    $("description").value = "";
+}
+
+function deleteRecord(index){
+    const x = records[index];
+    if(confirm("Delete the " + x.month + " entry?")){
+        records.splice(index,1);
+        localStorage.setItem("mysavings_records_v3", JSON.stringify(records));
+        if(editingIndex === index) cancelEdit();
+        render();
+    }
+}
+
+function escapeHtml(str){
+    return String(str).replace(/[&<>"']/g, function(m){
+        return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m];
+    });
+}
+
+$("month").value = new Date().toISOString().slice(0,7);
+render();
+</script>
+</body>
+</html>
